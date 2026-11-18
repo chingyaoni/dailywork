@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>每日視覺任務清單</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
     body {
@@ -23,6 +24,10 @@
       border-color: #2589F5;
       background-color: #F0F7FF;
       box-shadow: 0 4px 12px rgba(37, 137, 245, 0.12);
+    }
+    #qrcodeCanvas img, #qrcodeCanvas canvas {
+      margin: 0 auto;
+      border-radius: 12px;
     }
   </style>
 </head>
@@ -54,6 +59,12 @@
   </header>
 
   <main class="max-w-4xl mx-auto px-4 pt-5">
+    <!-- 快速綁定成功提示條 -->
+    <div id="bindSuccessBanner" class="hidden mb-4 bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 rounded-2xl text-sm flex items-center justify-between shadow-xs">
+      <span>🎉 <strong>新裝置綁定成功！</strong>已自動連接您的 Google Drive 雲端空間。</span>
+      <button onclick="document.getElementById('bindSuccessBanner').classList.add('hidden')" class="text-xs font-bold text-emerald-600 hover:text-emerald-900">關閉</button>
+    </div>
+
     <!-- 雙人分頁切換 -->
     <div class="grid grid-cols-2 gap-3 bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200/80 mb-4">
       <button id="tab-kid1" onclick="switchKid('kid1')" class="py-3 rounded-xl font-bold text-base transition-all bg-[#1E88E5] text-white shadow-sm">
@@ -135,7 +146,7 @@
       </div>
 
       <div class="space-y-6">
-        <!-- 1. Google Drive 連線設定 -->
+        <!-- 1. Google Drive 連線設定與快速綁定 -->
         <section class="bg-blue-50/70 border border-blue-200 rounded-2xl p-4">
           <h3 class="font-bold text-blue-900 text-sm mb-2">☁️ Google Drive 同步設定（透過 Apps Script）</h3>
           <div class="space-y-2.5">
@@ -143,16 +154,39 @@
               <label class="block text-xs font-bold text-slate-600 mb-1">Web App 網址（部署後取得的 URL）</label>
               <input type="text" id="gasUrlInput" placeholder="https://script.google.com/macros/s/...../exec" class="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white" />
             </div>
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">連線密碼（與 Code.gs 相同）</label>
                 <input type="password" id="gasTokenInput" placeholder="my_family_2026" class="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white" />
               </div>
               <div class="flex items-end gap-2">
-                <button onclick="saveCloudConfigAndSync()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-3 rounded-xl">
+                <button onclick="saveCloudConfigAndSync()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-3 rounded-xl shadow-xs">
                   儲存並從雲端同步
                 </button>
               </div>
+            </div>
+
+            <!-- 快速綁定按鈕區 -->
+            <div class="pt-2 border-t border-blue-200/70 flex flex-wrap items-center justify-between gap-2">
+              <span class="text-xs text-blue-800">要在其他手機 / 平板免輸入直接登入？</span>
+              <button onclick="generateQuickBind()" class="bg-white hover:bg-blue-100 text-blue-700 border border-blue-300 font-bold text-xs px-3 py-1.5 rounded-xl transition">
+                📲 產生快速綁定 QR Code / 連結
+              </button>
+            </div>
+
+            <!-- 展開的 QR Code 與連結面板 -->
+            <div id="quickBindBox" class="hidden mt-3 bg-white border border-blue-200 rounded-2xl p-4 text-center space-y-3">
+              <p class="text-xs font-bold text-slate-700">使用另一台手機相機掃描此 QR Code，或複製連結傳送給自己：</p>
+              <div id="qrcodeCanvas" class="p-2 bg-white inline-block"></div>
+              <div class="flex items-center gap-2 max-w-md mx-auto">
+                <input type="text" id="quickBindUrlInput" readonly class="w-full text-[11px] bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-500 select-all" />
+                <button id="copyBindBtn" onclick="copyQuickBindUrl()" class="shrink-0 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition">
+                  📋 複製連結
+                </button>
+              </div>
+              <p class="text-[11px] text-amber-700 bg-amber-50 rounded-lg py-1.5 px-2">
+                ⚠️ 此連結與 QR Code 內含雲端存取金鑰，僅限家庭成員設備使用，請勿公開分享。
+              </p>
             </div>
           </div>
         </section>
@@ -259,7 +293,6 @@ const DEFAULT_DATA = {
       { id: "k2_7", category: "閱讀&英文", period: "晚上", icon: "📚", title: "親子共讀時間" }
     ]
   },
-  // history 格式: { "2026-11-18": { kid1: { completed: ["k1_1"], total: 13 }, kid2: { completed: [], total: 7 } } }
   history: {},
   redeemedStickers: { kid1: 0, kid2: 0 }
 };
@@ -273,6 +306,42 @@ let currentCategory = "每日任務";
 let selectedDate = getLocalTodayStr();
 let calendarViewDate = new Date();
 let saveTimeout = null;
+
+// UTF-8 安全的 Base64 編解碼
+function encodeBindPayload(obj) {
+  const json = JSON.stringify(obj);
+  const bytes = new TextEncoder().encode(json);
+  let bin = "";
+  bytes.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin);
+}
+
+function decodeBindPayload(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+// 檢查網址是否帶有快速綁定參數 (#bind=...)
+function checkMagicBindLink() {
+  const hash = window.location.hash;
+  if (hash && hash.startsWith("#bind=")) {
+    try {
+      const encoded = hash.slice(6);
+      const parsed = decodeBindPayload(encoded);
+      if (parsed && parsed.url && parsed.token) {
+        cloudConfig = { url: parsed.url.trim(), token: parsed.token.trim() };
+        localStorage.setItem("kids_task_cloud_config", JSON.stringify(cloudConfig));
+        // 立即清除網址列上的綁定參數，確保安全與美觀
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+        document.getElementById("bindSuccessBanner").classList.remove("hidden");
+      }
+    } catch (e) {
+      console.error("快速綁定解析失敗", e);
+    }
+  }
+}
 
 // 取得當地 YYYY-MM-DD（避免時區誤差）
 function getLocalTodayStr(dateObj = new Date()) {
@@ -302,6 +371,7 @@ function playCheckSound(isChecking) {
 
 // ================= 初始化與同步 =================
 window.addEventListener("DOMContentLoaded", async () => {
+  checkMagicBindLink();
   document.getElementById("datePicker").value = selectedDate;
   renderAll();
   if (cloudConfig.url && cloudConfig.token) {
@@ -327,7 +397,6 @@ async function pullFromGoogleDrive() {
       renderAll();
       setSyncStatus("☁️ 已與 Drive 同步", "bg-emerald-100 text-emerald-700");
     } else if (json.status === "success") {
-      // 雲端尚無資料，將目前預設資料推上去
       await pushToGoogleDrive();
     } else {
       setSyncStatus("⚠️ 雲端驗證失敗", "bg-red-100 text-red-700");
@@ -338,10 +407,8 @@ async function pullFromGoogleDrive() {
 }
 
 function scheduleSave() {
-  // 1. 立即存入手機/iPad 本機快取
   localStorage.setItem("kids_task_app_data", JSON.stringify(appData));
 
-  // 2. 若有設定 Google Drive，延遲 1.2 秒批次背景同步
   if (!cloudConfig.url || !cloudConfig.token) {
     setSyncStatus("📱 本機模式", "bg-slate-100 text-slate-500");
     return;
@@ -378,9 +445,63 @@ async function pushToGoogleDrive() {
   }
 }
 
+// ================= 快速綁定 QR Code 與連結生成 =================
+function generateQuickBind() {
+  const url = document.getElementById("gasUrlInput").value.trim();
+  const token = document.getElementById("gasTokenInput").value.trim();
+
+  if (!url || !token) {
+    alert("請先在上方填入 Web App 網址與連線密碼！");
+    return;
+  }
+
+  // 順便儲存目前輸入的連線設定
+  cloudConfig = { url, token };
+  localStorage.setItem("kids_task_cloud_config", JSON.stringify(cloudConfig));
+
+  const encoded = encodeBindPayload({ url, token });
+  const baseUrl = window.location.origin + window.location.pathname;
+  const fullBindUrl = `${baseUrl}#bind=${encoded}`;
+
+  document.getElementById("quickBindUrlInput").value = fullBindUrl;
+  document.getElementById("quickBindBox").classList.remove("hidden");
+
+  const qrContainer = document.getElementById("qrcodeCanvas");
+  qrContainer.innerHTML = "";
+  try {
+    new QRCode(qrContainer, {
+      text: fullBindUrl,
+      width: 180,
+      height: 180,
+      colorDark: "#1e293b",
+      colorLight: "#ffffff",
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  } catch (e) {
+    qrContainer.innerHTML = `<p class="text-xs text-slate-400">QR Code 載入失敗，請直接複製下方連結使用</p>`;
+  }
+}
+
+async function copyQuickBindUrl() {
+  const input = document.getElementById("quickBindUrlInput");
+  const btn = document.getElementById("copyBindBtn");
+  try {
+    await navigator.clipboard.writeText(input.value);
+  } catch (e) {
+    input.select();
+    document.execCommand("copy");
+  }
+  const originalText = btn.textContent;
+  btn.textContent = "✅ 已複製！";
+  btn.classList.replace("bg-slate-800", "bg-emerald-600");
+  setTimeout(() => {
+    btn.textContent = originalText;
+    btn.classList.replace("bg-emerald-600", "bg-slate-800");
+  }, 2000);
+}
+
 // ================= 畫面渲染與任務互動 =================
 function renderAll() {
-  // 更新孩子名稱分頁
   document.getElementById("tab-kid1").textContent = appData.settings.kid1Name;
   document.getElementById("tab-kid2").textContent = appData.settings.kid2Name;
 
@@ -388,29 +509,23 @@ function renderAll() {
   document.getElementById("tab-kid1").className = `py-3 rounded-xl font-bold text-base transition-all ${isKid1 ? "bg-[#1E88E5] text-white shadow-sm" : "text-slate-500 hover:bg-slate-50"}`;
   document.getElementById("tab-kid2").className = `py-3 rounded-xl font-bold text-base transition-all ${!isKid1 ? "bg-[#1E88E5] text-white shadow-sm" : "text-slate-500 hover:bg-slate-50"}`;
 
-  // 更新大類分頁樣式
   const isDaily = currentCategory === "每日任務";
   document.getElementById("cat-daily").className = `pb-2.5 font-bold text-sm border-b-2 flex items-center gap-1.5 ${isDaily ? "border-[#1E88E5] text-[#1E88E5]" : "border-transparent text-slate-400"}`;
   document.getElementById("cat-study").className = `pb-2.5 font-bold text-sm border-b-2 flex items-center gap-1.5 ${!isDaily ? "border-[#1E88E5] text-[#1E88E5]" : "border-transparent text-slate-400"}`;
 
-  // 日期與歷史橫幅
   const isToday = selectedDate === getLocalTodayStr();
   document.getElementById("todayBadge").classList.toggle("hidden", !isToday);
   document.getElementById("historyBanner").classList.toggle("hidden", isToday);
 
-  // 更新頂部貼紙數量
   document.getElementById("headerStickerCount").textContent = calculateAvailableStickers(currentKid);
 
-  // 取得當天完成清單
   const dayRecord = appData.history[selectedDate]?.[currentKid] || { completed: [] };
   const completedIds = new Set(dayRecord.completed);
 
-  // 計算全天總進度
   const allKidTasks = appData.tasks[currentKid] || [];
   const totalCompletedToday = allKidTasks.filter(t => completedIds.has(t.id)).length;
   document.getElementById("dailySummaryText").textContent = `全天完成：${totalCompletedToday} / ${allKidTasks.length}`;
 
-  // 過濾目前大類的任務並依時段分組
   const categoryTasks = allKidTasks.filter(t => t.category === currentCategory);
   const periods = ["放學後", "吃飯", "晚上"];
   const periodIcons = { "放學後": "🌤️", "吃飯": "🍽️", "晚上": "🌙" };
@@ -473,7 +588,6 @@ function toggleTask(taskId) {
   }
 
   const record = appData.history[selectedDate][currentKid];
-  // 每次互動更新當天分母為最新任務總數
   record.total = (appData.tasks[currentKid] || []).length;
 
   const idx = record.completed.indexOf(taskId);
@@ -524,8 +638,8 @@ function getDayStickers(dateStr, kid) {
   const rec = appData.history[dateStr]?.[kid];
   if (!rec || !rec.total || rec.completed.length === 0) return 0;
   const rate = rec.completed.length / rec.total;
-  if (rate >= 1) return 2;     // 100% 完成得 2 張（皇冠）
-  if (rate >= 0.8) return 1;   // 80% 以上得 1 張（星星）
+  if (rate >= 1) return 2;
+  if (rate >= 0.8) return 1;
   return 0;
 }
 
@@ -630,8 +744,8 @@ function openParentModal() {
   document.getElementById("kid1NameInput").value = appData.settings.kid1Name;
   document.getElementById("kid2NameInput").value = appData.settings.kid2Name;
   document.getElementById("redeemGoalInput").value = appData.settings.redeemGoal || 10;
+  document.getElementById("quickBindBox").classList.add("hidden");
 
-  // 更新下拉選單顯示名稱
   const k1Opt = document.querySelector("#newTaskKid option[value='kid1']");
   const k2Opt = document.querySelector("#newTaskKid option[value='kid2']");
   k1Opt.textContent = appData.settings.kid1Name;
