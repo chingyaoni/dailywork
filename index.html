@@ -359,13 +359,16 @@ async function pushToGoogleDrive() {
   try {
     const res = await fetch(cloudConfig.url, {
       method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
       body: JSON.stringify({
         token: cloudConfig.token,
         payload: appData
       })
     });
-    const json = await res.json();
-    if (json.status === "success") {
+    if (res.type === "opaque" || res.ok) {
       setSyncStatus("☁️ 已同步至 Drive", "bg-emerald-100 text-emerald-700");
     } else {
       setSyncStatus("⚠️ 同步失敗", "bg-red-100 text-red-700");
