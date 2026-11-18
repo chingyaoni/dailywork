@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>每日視覺任務清單</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background-color: #F4F7FA;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .task-card {
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .task-card:active {
+      transform: scale(0.96);
+    }
+    .task-card.checked {
+      border-color: #2589F5;
+      background-color: #F0F7FF;
+      box-shadow: 0 4px 12px rgba(37, 137, 245, 0.12);
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-24 text-slate-700">
+
+  <!-- 頂部狀態與日期導覽列 -->
+  <header class="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3">
+    <div class="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <!-- 日期切換器（時光機） -->
+      <div class="flex items-center gap-2 bg-slate-100 rounded-full px-3 py-1.5">
+        <button onclick="changeDate(-1)" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white text-slate-600 font-bold">◀</button>
+        <input type="date" id="datePicker" onchange="selectDate(this.value)" class="bg-transparent text-sm font-bold text-slate-700 focus:outline-none cursor-pointer" />
+        <span id="todayBadge" class="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full font-medium">今天</span>
+        <button onclick="changeDate(1)" class="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white text-slate-600 font-bold">▶</button>
+      </div>
+
+      <!-- 同步狀態與功能按鈕 -->
+      <div class="flex items-center gap-2">
+        <span id="syncStatus" class="text-xs font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">📱 本機模式</span>
+        <button onclick="openStickerModal()" class="flex items-center gap-1 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold px-3 py-1.5 rounded-full transition">
+          <span>🏆 貼紙簿</span>
+          <span id="headerStickerCount" class="bg-amber-500 text-white px-1.5 py-0.2 rounded-full">0</span>
+        </button>
+        <button onclick="openParentModal()" class="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100" title="家長設定">
+          ⚙️
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 pt-5">
+    <!-- 雙人分頁切換 -->
+    <div class="grid grid-cols-2 gap-3 bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200/80 mb-4">
+      <button id="tab-kid1" onclick="switchKid('kid1')" class="py-3 rounded-xl font-bold text-base transition-all bg-[#1E88E5] text-white shadow-sm">
+        大寶
+      </button>
+      <button id="tab-kid2" onclick="switchKid('kid2')" class="py-3 rounded-xl font-bold text-base transition-all text-slate-500 hover:bg-slate-50">
+        小寶
+      </button>
+    </div>
+
+    <!-- 任務大類切換標籤 -->
+    <div class="flex items-center justify-between border-b border-slate-200 mb-5">
+      <div class="flex gap-6">
+        <button id="cat-daily" onclick="switchCategory('每日任務')" class="pb-2.5 font-bold text-sm border-b-2 border-[#1E88E5] text-[#1E88E5] flex items-center gap-1.5">
+          <span>📋 每日任務</span>
+        </button>
+        <button id="cat-study" onclick="switchCategory('閱讀&英文')" class="pb-2.5 font-bold text-sm border-b-2 border-transparent text-slate-400 hover:text-slate-600 flex items-center gap-1.5">
+          <span>📖 閱讀&英文</span>
+        </button>
+      </div>
+      <div id="dailySummaryText" class="text-xs font-bold text-slate-500 pb-2">
+        今日進度：0 / 0
+      </div>
+    </div>
+
+    <!-- 歷史檢視提示條 -->
+    <div id="historyBanner" class="hidden mb-4 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-xl text-sm flex items-center justify-between">
+      <span>🕰️ 目前正在檢視歷史紀錄（點擊卡片仍可補登修改）</span>
+      <button onclick="goToday()" class="text-xs font-bold underline">回到今天</button>
+    </div>
+
+    <!-- 任務區塊容器 -->
+    <div id="taskContainer" class="space-y-6"></div>
+  </main>
+
+  <!-- 貼紙簿 / 歷史月曆彈窗 -->
+  <div id="stickerModal" class="fixed inset-0 z-50 hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-black text-slate-800">🏆 <span id="stickerKidName">大寶</span>的集點貼紙簿</h2>
+        <button onclick="closeModal('stickerModal')" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold">✕</button>
+      </div>
+
+      <!-- 貼紙統計卡片 -->
+      <div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4 mb-5 flex items-center justify-between">
+        <div>
+          <div class="text-xs font-bold text-amber-700 mb-1">目前累積可用貼紙</div>
+          <div class="text-3xl font-black text-amber-600"><span id="availableStickers">0</span> <span class="text-sm font-bold">張</span></div>
+          <div class="text-xs text-slate-500 mt-1">達成率 ≥80% 得 ⭐，100% 得 👑（2張）</div>
+        </div>
+        <button onclick="redeemSticker()" class="bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm px-4 py-2.5 rounded-xl shadow-sm active:scale-95 transition">
+          🎁 兌換獎勵<br><span class="text-[11px] font-normal">(扣 <span id="redeemCostLabel">10</span> 張)</span>
+        </button>
+      </div>
+
+      <!-- 月曆控制 -->
+      <div class="flex items-center justify-between mb-3">
+        <button onclick="changeCalendarMonth(-1)" class="px-3 py-1 rounded-lg bg-slate-100 text-sm font-bold">◀ 上個月</button>
+        <span id="calendarMonthLabel" class="font-bold text-slate-700">2026年 11月</span>
+        <button onclick="changeCalendarMonth(1)" class="px-3 py-1 rounded-lg bg-slate-100 text-sm font-bold">下個月 ▶</button>
+      </div>
+
+      <!-- 星期標頭 -->
+      <div class="grid grid-cols-7 text-center text-xs font-bold text-slate-400 mb-2">
+        <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+      </div>
+      <!-- 月曆日期格 -->
+      <div id="calendarGrid" class="grid grid-cols-7 gap-1.5 text-center"></div>
+      <p class="text-xs text-slate-400 mt-3 text-center">點擊月曆上的日期，可直接跳轉回看當天的任務清單</p>
+    </div>
+  </div>
+
+  <!-- 家長設定彈窗 -->
+  <div id="parentModal" class="fixed inset-0 z-50 hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-4 border-b pb-3">
+        <h2 class="text-xl font-black text-slate-800">⚙️ 家長管理與雲端設定</h2>
+        <button onclick="closeModal('parentModal')" class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold">✕</button>
+      </div>
+
+      <div class="space-y-6">
+        <!-- 1. Google Drive 連線設定 -->
+        <section class="bg-blue-50/70 border border-blue-200 rounded-2xl p-4">
+          <h3 class="font-bold text-blue-900 text-sm mb-2">☁️ Google Drive 同步設定（透過 Apps Script）</h3>
+          <div class="space-y-2.5">
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Web App 網址（部署後取得的 URL）</label>
+              <input type="text" id="gasUrlInput" placeholder="https://script.google.com/macros/s/...../exec" class="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white" />
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 mb-1">連線密碼（與 Code.gs 相同）</label>
+                <input type="password" id="gasTokenInput" placeholder="my_family_2026" class="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white" />
+              </div>
+              <div class="flex items-end gap-2">
+                <button onclick="saveCloudConfigAndSync()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-3 rounded-xl">
+                  儲存並從雲端同步
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. 孩子名稱與獎勵門檻 -->
+        <section class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">分頁 1 名稱</label>
+            <input type="text" id="kid1NameInput" class="w-full text-sm p-2 rounded-xl border border-slate-300" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">分頁 2 名稱</label>
+            <input type="text" id="kid2NameInput" class="w-full text-sm p-2 rounded-xl border border-slate-300" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">兌換獎勵所需貼紙</label>
+            <input type="number" id="redeemGoalInput" min="1" class="w-full text-sm p-2 rounded-xl border border-slate-300" />
+          </div>
+        </section>
+
+        <!-- 3. 新增任務 -->
+        <section class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+          <h3 class="font-bold text-slate-800 text-sm mb-2">➕ 新增任務卡片</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <select id="newTaskKid" class="text-xs p-2 rounded-xl border border-slate-300 bg-white">
+              <option value="kid1">分頁 1</option>
+              <option value="kid2">分頁 2</option>
+            </select>
+            <select id="newTaskCategory" class="text-xs p-2 rounded-xl border border-slate-300 bg-white">
+              <option value="每日任務">每日任務</option>
+              <option value="閱讀&英文">閱讀&英文</option>
+            </select>
+            <select id="newTaskPeriod" class="text-xs p-2 rounded-xl border border-slate-300 bg-white">
+              <option value="放學後">放學後</option>
+              <option value="吃飯">吃飯</option>
+              <option value="晚上">晚上</option>
+            </select>
+            <input type="text" id="newTaskIcon" placeholder="圖示 (例: 🪥)" value="⭐" class="text-xs p-2 rounded-xl border border-slate-300 bg-white text-center" />
+            <input type="text" id="newTaskTitle" placeholder="任務名稱" class="text-xs p-2 rounded-xl border border-slate-300 bg-white" />
+          </div>
+          <button onclick="addNewTask()" class="mt-2.5 w-full bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs py-2.5 rounded-xl">
+            新增這項任務
+          </button>
+        </section>
+
+        <!-- 4. 管理現有任務列表 -->
+        <section>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-bold text-slate-800 text-sm">📝 管理現有任務（目前編輯：<span id="editListKidLabel"></span>）</h3>
+            <select id="filterEditKid" onchange="renderAdminTaskList()" class="text-xs p-1.5 rounded-lg border border-slate-300">
+              <option value="kid1">查看分頁 1 任務</option>
+              <option value="kid2">查看分頁 2 任務</option>
+            </select>
+          </div>
+          <div id="adminTaskList" class="space-y-1.5 max-h-48 overflow-y-auto pr-1"></div>
+        </section>
+
+        <!-- 5. 儲存與備份 -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t">
+          <div class="flex gap-2">
+            <button onclick="exportJsonBackup()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl">匯出 JSON 備份</button>
+            <button onclick="changeParentPin()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl">修改家長密碼</button>
+          </div>
+          <button onclick="saveGeneralSettings()" class="bg-[#1E88E5] hover:bg-blue-600 text-white font-bold text-sm px-6 py-2.5 rounded-xl shadow">
+            儲存所有設定
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ================= 預設初始資料 =================
+const DEFAULT_DATA = {
+  settings: {
+    kid1Name: "大寶",
+    kid2Name: "小寶",
+    redeemGoal: 10,
+    parentPin: "1234"
+  },
+  tasks: {
+    kid1: [
+      { id: "k1_1", category: "每日任務", period: "放學後", icon: "🧥", title: "外套 放好" },
+      { id: "k1_2", category: "每日任務", period: "放學後", icon: "🥢", title: "拿出餐具 水壺" },
+      { id: "k1_3", category: "每日任務", period: "放學後", icon: "🎒", title: "書包掛好" },
+      { id: "k1_4", category: "每日任務", period: "放學後", icon: "🧦", title: "襪子放洗衣籃 洗手" },
+      { id: "k1_5", category: "每日任務", period: "放學後", icon: "💬", title: "抱抱+說開心的事" },
+      { id: "k1_6", category: "每日任務", period: "吃飯", icon: "🍴", title: "拿餐具" },
+      { id: "k1_7", category: "每日任務", period: "吃飯", icon: "🥣", title: "碗放洗手台" },
+      { id: "k1_8", category: "每日任務", period: "吃飯", icon: "🧽", title: "幫忙擦桌子" },
+      { id: "k1_9", category: "每日任務", period: "晚上", icon: "🛁", title: "洗澡吹頭髮" },
+      { id: "k1_10", category: "每日任務", period: "晚上", icon: "📋", title: "檢查聯絡簿" },
+      { id: "k1_11", category: "每日任務", period: "晚上", icon: "🎒", title: "整理明天書包" },
+      { id: "k1_12", category: "閱讀&英文", period: "晚上", icon: "📖", title: "中文閱讀 15 分鐘" },
+      { id: "k1_13", category: "閱讀&英文", period: "晚上", icon: "🔤", title: "英文繪本或單字" }
+    ],
+    kid2: [
+      { id: "k2_1", category: "每日任務", period: "放學後", icon: "👟", title: "鞋子擺整齊" },
+      { id: "k2_2", category: "每日任務", period: "放學後", icon: "🧼", title: "洗手擦乾" },
+      { id: "k2_3", category: "每日任務", period: "放學後", icon: "🤗", title: "抱抱爸爸媽媽" },
+      { id: "k2_4", category: "每日任務", period: "吃飯", icon: "🥄", title: "自己吃飯飯" },
+      { id: "k2_5", category: "每日任務", period: "晚上", icon: "🧸", title: "玩具回家" },
+      { id: "k2_6", category: "每日任務", period: "晚上", icon: "🪥", title: "刷牙漱口" },
+      { id: "k2_7", category: "閱讀&英文", period: "晚上", icon: "📚", title: "親子共讀時間" }
+    ]
+  },
+  // history 格式: { "2026-11-18": { kid1: { completed: ["k1_1"], total: 13 }, kid2: { completed: [], total: 7 } } }
+  history: {},
+  redeemedStickers: { kid1: 0, kid2: 0 }
+};
+
+// ================= 狀態變數 =================
+let appData = JSON.parse(localStorage.getItem("kids_task_app_data")) || structuredClone(DEFAULT_DATA);
+let cloudConfig = JSON.parse(localStorage.getItem("kids_task_cloud_config")) || { url: "", token: "" };
+
+let currentKid = "kid1";
+let currentCategory = "每日任務";
+let selectedDate = getLocalTodayStr();
+let calendarViewDate = new Date();
+let saveTimeout = null;
+
+// 取得當地 YYYY-MM-DD（避免時區誤差）
+function getLocalTodayStr(dateObj = new Date()) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const d = String(dateObj.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// 播放輕快音效
+function playCheckSound(isChecking) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(isChecking ? 523.25 : 392.00, ctx.currentTime);
+    if (isChecking) osc.frequency.exponentialRampToValueAtTime(783.99, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.18);
+  } catch (e) {}
+}
+
+// ================= 初始化與同步 =================
+window.addEventListener("DOMContentLoaded", async () => {
+  document.getElementById("datePicker").value = selectedDate;
+  renderAll();
+  if (cloudConfig.url && cloudConfig.token) {
+    await pullFromGoogleDrive();
+  }
+});
+
+function setSyncStatus(text, colorClass) {
+  const el = document.getElementById("syncStatus");
+  el.textContent = text;
+  el.className = `text-xs font-medium px-2.5 py-1 rounded-full ${colorClass}`;
+}
+
+async function pullFromGoogleDrive() {
+  if (!cloudConfig.url || !cloudConfig.token) return;
+  setSyncStatus("🔄 讀取雲端中...", "bg-blue-100 text-blue-700");
+  try {
+    const res = await fetch(`${cloudConfig.url}?token=${encodeURIComponent(cloudConfig.token)}`);
+    const json = await res.json();
+    if (json.status === "success" && json.data && json.data.tasks) {
+      appData = { ...structuredClone(DEFAULT_DATA), ...json.data };
+      localStorage.setItem("kids_task_app_data", JSON.stringify(appData));
+      renderAll();
+      setSyncStatus("☁️ 已與 Drive 同步", "bg-emerald-100 text-emerald-700");
+    } else if (json.status === "success") {
+      // 雲端尚無資料，將目前預設資料推上去
+      await pushToGoogleDrive();
+    } else {
+      setSyncStatus("⚠️ 雲端驗證失敗", "bg-red-100 text-red-700");
+    }
+  } catch (err) {
+    setSyncStatus("⚠️ 離線（已存本機）", "bg-amber-100 text-amber-700");
+  }
+}
+
+function scheduleSave() {
+  // 1. 立即存入手機/iPad 本機快取
+  localStorage.setItem("kids_task_app_data", JSON.stringify(appData));
+
+  // 2. 若有設定 Google Drive，延遲 1.2 秒批次背景同步
+  if (!cloudConfig.url || !cloudConfig.token) {
+    setSyncStatus("📱 本機模式", "bg-slate-100 text-slate-500");
+    return;
+  }
+  setSyncStatus("⏳ 準備同步...", "bg-amber-100 text-amber-700");
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    pushToGoogleDrive();
+  }, 1200);
+}
+
+async function pushToGoogleDrive() {
+  if (!cloudConfig.url || !cloudConfig.token) return;
+  setSyncStatus("☁️ 同步中...", "bg-blue-100 text-blue-700");
+  try {
+    const res = await fetch(cloudConfig.url, {
+      method: "POST",
+      body: JSON.stringify({
+        token: cloudConfig.token,
+        payload: appData
+      })
+    });
+    const json = await res.json();
+    if (json.status === "success") {
+      setSyncStatus("☁️ 已同步至 Drive", "bg-emerald-100 text-emerald-700");
+    } else {
+      setSyncStatus("⚠️ 同步失敗", "bg-red-100 text-red-700");
+    }
+  } catch (err) {
+    setSyncStatus("⚠️ 網路異常（已存本機）", "bg-amber-100 text-amber-700");
+  }
+}
+
+// ================= 畫面渲染與任務互動 =================
+function renderAll() {
+  // 更新孩子名稱分頁
+  document.getElementById("tab-kid1").textContent = appData.settings.kid1Name;
+  document.getElementById("tab-kid2").textContent = appData.settings.kid2Name;
+
+  const isKid1 = currentKid === "kid1";
+  document.getElementById("tab-kid1").className = `py-3 rounded-xl font-bold text-base transition-all ${isKid1 ? "bg-[#1E88E5] text-white shadow-sm" : "text-slate-500 hover:bg-slate-50"}`;
+  document.getElementById("tab-kid2").className = `py-3 rounded-xl font-bold text-base transition-all ${!isKid1 ? "bg-[#1E88E5] text-white shadow-sm" : "text-slate-500 hover:bg-slate-50"}`;
+
+  // 更新大類分頁樣式
+  const isDaily = currentCategory === "每日任務";
+  document.getElementById("cat-daily").className = `pb-2.5 font-bold text-sm border-b-2 flex items-center gap-1.5 ${isDaily ? "border-[#1E88E5] text-[#1E88E5]" : "border-transparent text-slate-400"}`;
+  document.getElementById("cat-study").className = `pb-2.5 font-bold text-sm border-b-2 flex items-center gap-1.5 ${!isDaily ? "border-[#1E88E5] text-[#1E88E5]" : "border-transparent text-slate-400"}`;
+
+  // 日期與歷史橫幅
+  const isToday = selectedDate === getLocalTodayStr();
+  document.getElementById("todayBadge").classList.toggle("hidden", !isToday);
+  document.getElementById("historyBanner").classList.toggle("hidden", isToday);
+
+  // 更新頂部貼紙數量
+  document.getElementById("headerStickerCount").textContent = calculateAvailableStickers(currentKid);
+
+  // 取得當天完成清單
+  const dayRecord = appData.history[selectedDate]?.[currentKid] || { completed: [] };
+  const completedIds = new Set(dayRecord.completed);
+
+  // 計算全天總進度
+  const allKidTasks = appData.tasks[currentKid] || [];
+  const totalCompletedToday = allKidTasks.filter(t => completedIds.has(t.id)).length;
+  document.getElementById("dailySummaryText").textContent = `全天完成：${totalCompletedToday} / ${allKidTasks.length}`;
+
+  // 過濾目前大類的任務並依時段分組
+  const categoryTasks = allKidTasks.filter(t => t.category === currentCategory);
+  const periods = ["放學後", "吃飯", "晚上"];
+  const periodIcons = { "放學後": "🌤️", "吃飯": "🍽️", "晚上": "🌙" };
+
+  const container = document.getElementById("taskContainer");
+  container.innerHTML = "";
+
+  let globalIndex = 1;
+  periods.forEach(period => {
+    const groupTasks = categoryTasks.filter(t => t.period === period);
+    if (groupTasks.length === 0) return;
+
+    const doneCount = groupTasks.filter(t => completedIds.has(t.id)).length;
+    const section = document.createElement("section");
+    section.innerHTML = `
+      <div class="flex items-center gap-2 mb-3">
+        <span class="bg-white border border-slate-200 px-3 py-1 rounded-full text-xs font-bold text-slate-700 shadow-xs">
+          ${periodIcons[period] || "📌"} ${period}
+        </span>
+        <span class="text-xs font-bold ${doneCount === groupTasks.length ? "text-emerald-600" : "text-slate-400"}">
+          ${doneCount} / ${groupTasks.length}
+        </span>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        ${groupTasks.map(task => {
+          const isChecked = completedIds.has(task.id);
+          const num = globalIndex++;
+          return `
+            <div onclick="toggleTask('${task.id}')" class="task-card cursor-pointer relative bg-white border-2 ${isChecked ? "checked" : "border-slate-200/80"} rounded-2xl p-4 flex flex-col items-center justify-center text-center min-h-[135px]">
+              <span class="absolute top-2.5 left-3 text-xs font-bold text-slate-300">${num}</span>
+              <span class="absolute top-2.5 right-2.5 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${isChecked ? "bg-[#1E88E5] text-white scale-110" : "border-2 border-slate-200 text-transparent"}">
+                ✓
+              </span>
+              <div class="text-4xl mb-2.5 mt-1">${task.icon}</div>
+              <div class="font-bold text-sm ${isChecked ? "text-[#1E88E5]" : "text-slate-700"} leading-snug">
+                ${task.title}
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    `;
+    container.appendChild(section);
+  });
+
+  if (container.innerHTML === "") {
+    container.innerHTML = `<div class="text-center py-12 text-slate-400 text-sm">此分類尚無任務，可點擊右上角 ⚙️ 新增任務</div>`;
+  }
+}
+
+function toggleTask(taskId) {
+  if (!appData.history[selectedDate]) {
+    appData.history[selectedDate] = {};
+  }
+  if (!appData.history[selectedDate][currentKid]) {
+    appData.history[selectedDate][currentKid] = {
+      completed: [],
+      total: (appData.tasks[currentKid] || []).length
+    };
+  }
+
+  const record = appData.history[selectedDate][currentKid];
+  // 每次互動更新當天分母為最新任務總數
+  record.total = (appData.tasks[currentKid] || []).length;
+
+  const idx = record.completed.indexOf(taskId);
+  if (idx > -1) {
+    record.completed.splice(idx, 1);
+    playCheckSound(false);
+  } else {
+    record.completed.push(taskId);
+    playCheckSound(true);
+  }
+
+  renderAll();
+  scheduleSave();
+}
+
+function switchKid(kid) {
+  currentKid = kid;
+  renderAll();
+}
+
+function switchCategory(cat) {
+  currentCategory = cat;
+  renderAll();
+}
+
+function changeDate(delta) {
+  const parts = selectedDate.split("-").map(Number);
+  const d = new Date(parts[0], parts[1] - 1, parts[2] + delta);
+  selectedDate = getLocalTodayStr(d);
+  document.getElementById("datePicker").value = selectedDate;
+  renderAll();
+}
+
+function selectDate(val) {
+  if (!val) return;
+  selectedDate = val;
+  renderAll();
+}
+
+function goToday() {
+  selectedDate = getLocalTodayStr();
+  document.getElementById("datePicker").value = selectedDate;
+  renderAll();
+}
+
+// ================= 貼紙計算與月曆歷史 =================
+function getDayStickers(dateStr, kid) {
+  const rec = appData.history[dateStr]?.[kid];
+  if (!rec || !rec.total || rec.completed.length === 0) return 0;
+  const rate = rec.completed.length / rec.total;
+  if (rate >= 1) return 2;     // 100% 完成得 2 張（皇冠）
+  if (rate >= 0.8) return 1;   // 80% 以上得 1 張（星星）
+  return 0;
+}
+
+function calculateAvailableStickers(kid) {
+  let earned = 0;
+  for (const dateStr in appData.history) {
+    earned += getDayStickers(dateStr, kid);
+  }
+  const spent = appData.redeemedStickers?.[kid] || 0;
+  return Math.max(0, earned - spent);
+}
+
+function openStickerModal() {
+  calendarViewDate = new Date();
+  document.getElementById("stickerKidName").textContent = appData.settings[`${currentKid}Name`];
+  document.getElementById("redeemCostLabel").textContent = appData.settings.redeemGoal || 10;
+  renderStickerCalendar();
+  document.getElementById("stickerModal").classList.remove("hidden");
+}
+
+function changeCalendarMonth(delta) {
+  calendarViewDate.setMonth(calendarViewDate.getMonth() + delta);
+  renderStickerCalendar();
+}
+
+function renderStickerCalendar() {
+  document.getElementById("availableStickers").textContent = calculateAvailableStickers(currentKid);
+
+  const year = calendarViewDate.getFullYear();
+  const month = calendarViewDate.getMonth();
+  document.getElementById("calendarMonthLabel").textContent = `${year}年 ${month + 1}月`;
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const grid = document.getElementById("calendarGrid");
+  grid.innerHTML = "";
+
+  for (let i = 0; i < firstDay; i++) {
+    grid.innerHTML += `<div></div>`;
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const stickers = getDayStickers(dateStr, currentKid);
+    const rec = appData.history[dateStr]?.[currentKid];
+    const hasProgress = rec && rec.completed.length > 0;
+
+    let badge = "";
+    let bgClass = "bg-slate-50 text-slate-600";
+    if (stickers === 2) {
+      badge = "👑";
+      bgClass = "bg-amber-100 border border-amber-300 text-amber-900 font-bold";
+    } else if (stickers === 1) {
+      badge = "⭐";
+      bgClass = "bg-blue-50 border border-blue-200 text-blue-800 font-bold";
+    } else if (hasProgress) {
+      badge = "🌱";
+    }
+
+    grid.innerHTML += `
+      <button onclick="jumpToHistoryDate('${dateStr}')" class="${bgClass} rounded-xl py-2 flex flex-col items-center justify-center hover:ring-2 hover:ring-blue-400 transition">
+        <span class="text-xs">${day}</span>
+        <span class="text-sm h-5 leading-5">${badge}</span>
+      </button>
+    `;
+  }
+}
+
+function jumpToHistoryDate(dateStr) {
+  selectedDate = dateStr;
+  document.getElementById("datePicker").value = selectedDate;
+  closeModal("stickerModal");
+  renderAll();
+}
+
+function redeemSticker() {
+  const goal = Number(appData.settings.redeemGoal) || 10;
+  const available = calculateAvailableStickers(currentKid);
+  if (available < goal) {
+    alert(`目前只有 ${available} 張貼紙，還差 ${goal - available} 張才能兌換喔！`);
+    return;
+  }
+  if (confirm(`確定要扣除 ${goal} 張貼紙兌換一次獎勵嗎？`)) {
+    if (!appData.redeemedStickers) appData.redeemedStickers = { kid1: 0, kid2: 0 };
+    appData.redeemedStickers[currentKid] = (appData.redeemedStickers[currentKid] || 0) + goal;
+    renderStickerCalendar();
+    renderAll();
+    scheduleSave();
+    alert("🎉 兌換成功！");
+  }
+}
+
+// ================= 家長管理設定 =================
+function openParentModal() {
+  const pin = prompt("請輸入家長密碼（預設 1234）：");
+  if (pin !== appData.settings.parentPin) {
+    if (pin !== null) alert("密碼錯誤");
+    return;
+  }
+  document.getElementById("gasUrlInput").value = cloudConfig.url || "";
+  document.getElementById("gasTokenInput").value = cloudConfig.token || "";
+  document.getElementById("kid1NameInput").value = appData.settings.kid1Name;
+  document.getElementById("kid2NameInput").value = appData.settings.kid2Name;
+  document.getElementById("redeemGoalInput").value = appData.settings.redeemGoal || 10;
+
+  // 更新下拉選單顯示名稱
+  const k1Opt = document.querySelector("#newTaskKid option[value='kid1']");
+  const k2Opt = document.querySelector("#newTaskKid option[value='kid2']");
+  k1Opt.textContent = appData.settings.kid1Name;
+  k2Opt.textContent = appData.settings.kid2Name;
+
+  renderAdminTaskList();
+  document.getElementById("parentModal").classList.remove("hidden");
+}
+
+function renderAdminTaskList() {
+  const targetKid = document.getElementById("filterEditKid").value;
+  document.getElementById("editListKidLabel").textContent = appData.settings[`${targetKid}Name`];
+  const list = appData.tasks[targetKid] || [];
+  const container = document.getElementById("adminTaskList");
+
+  container.innerHTML = list.map(t => `
+    <div class="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 text-xs">
+      <div class="flex items-center gap-2">
+        <span class="text-base">${t.icon}</span>
+        <span class="font-bold text-slate-700">${t.title}</span>
+        <span class="text-slate-400">(${t.category} / ${t.period})</span>
+      </div>
+      <button onclick="deleteTask('${targetKid}', '${t.id}')" class="text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg font-bold">刪除</button>
+    </div>
+  `).join("");
+}
+
+function addNewTask() {
+  const kid = document.getElementById("newTaskKid").value;
+  const category = document.getElementById("newTaskCategory").value;
+  const period = document.getElementById("newTaskPeriod").value;
+  const icon = document.getElementById("newTaskIcon").value.trim() || "⭐";
+  const title = document.getElementById("newTaskTitle").value.trim();
+
+  if (!title) return alert("請輸入任務名稱");
+
+  appData.tasks[kid].push({
+    id: "t_" + Date.now(),
+    category,
+    period,
+    icon,
+    title
+  });
+  document.getElementById("newTaskTitle").value = "";
+  document.getElementById("filterEditKid").value = kid;
+  renderAdminTaskList();
+  renderAll();
+  scheduleSave();
+}
+
+function deleteTask(kid, taskId) {
+  if (!confirm("確定要刪除這項任務嗎？")) return;
+  appData.tasks[kid] = appData.tasks[kid].filter(t => t.id !== taskId);
+  renderAdminTaskList();
+  renderAll();
+  scheduleSave();
+}
+
+function saveGeneralSettings() {
+  appData.settings.kid1Name = document.getElementById("kid1NameInput").value.trim() || "大寶";
+  appData.settings.kid2Name = document.getElementById("kid2NameInput").value.trim() || "小寶";
+  appData.settings.redeemGoal = Number(document.getElementById("redeemGoalInput").value) || 10;
+  renderAll();
+  scheduleSave();
+  closeModal("parentModal");
+}
+
+async function saveCloudConfigAndSync() {
+  cloudConfig.url = document.getElementById("gasUrlInput").value.trim();
+  cloudConfig.token = document.getElementById("gasTokenInput").value.trim();
+  localStorage.setItem("kids_task_cloud_config", JSON.stringify(cloudConfig));
+  await pullFromGoogleDrive();
+  alert("連線設定已儲存並完成同步檢查！");
+}
+
+function changeParentPin() {
+  const newPin = prompt("請輸入新的 4 位數家長密碼：");
+  if (newPin && newPin.trim().length >= 4) {
+    appData.settings.parentPin = newPin.trim();
+    scheduleSave();
+    alert("家長密碼已更新！");
+  }
+}
+
+function exportJsonBackup() {
+  const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `kids_tasks_backup_${getLocalTodayStr()}.json`;
+  a.click();
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.add("hidden");
+}
+</script>
+</body>
+</html>
